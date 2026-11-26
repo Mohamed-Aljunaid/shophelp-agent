@@ -32,4 +32,4 @@ The full plan is in `PLAN.md`. Read it before doing anything.
 ## Progress
 
 - [x] Phase 1 – Setup (uv project, Python 3.11, Git, GitHub: Mohamed-Aljunaid/shophelp-agent)
-- [ ] Phase 2 – Shop data and tools (2.1–2.3 done; next: step 2.4, action tools)
+- [ ] Phase 2 – Shop data and tools (2.1–2.4 done; next: step 2.5, policy checks in code)
