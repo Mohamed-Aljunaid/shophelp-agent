@@ -29,4 +29,5 @@ The full plan is in `PLAN.md`. Read it before doing anything.
 
 ## Progress
 
-- [ ] Phase 1 – Setup (folder skeleton already created; next: `uv init`, Git, GitHub)
+- [x] Phase 1 – Setup (uv project, Python 3.11, Git, GitHub: Mohamed-Aljunaid/shophelp-agent)
+- [ ] Phase 2 – Shop data and tools (next: step 2.1, get tau-bench retail data)

@@ -6,7 +6,7 @@ A customer support agent for a fictional online shop that checks, cancels, retur
 
 ## Status
 
-Phase 1 – Setup: folder skeleton created.
+Phase 1 – Setup: done (uv project, tests, GitHub repo). Next: Phase 2 – shop data and tools.
 
 ## Results
 
