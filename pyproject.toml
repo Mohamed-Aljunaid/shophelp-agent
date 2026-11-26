@@ -1,0 +1,20 @@
+[project]
+name = "shophelp-agent"
+version = "0.1.0"
+description = "Customer support agent for a fictional shop, evaluated on tau-bench retail"
+authors = [
+    { name = "Muhammed Elgenead Hago", email = "muhammed.elgenead.hago.766@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
