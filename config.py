@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     refund_approval_threshold: float = 200.0  # refunds above this need staff approval
     cors_origins: list[str] = ["http://localhost:5280"]  # the Vite dev server (frontend/vite.config.ts)
     staff_token: str = ""  # required in X-Staff-Token for POST /approvals; empty = approvals disabled
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
+    frontend_dist: Path = ROOT / "frontend" / "dist"  # served at / when built (npm run build)
 
     eval_split: str = "test"      # tau3 split: test (40), train (74) or base (all 114)
     eval_task_count: int = 15     # first N tasks of the split

@@ -1,6 +1,7 @@
 // Client for the ShopHelp FastAPI backend (api/app.py).
 
-export const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+// Dev: the API runs separately on :8000. Production build: served by the API itself (same origin).
+export const API_URL: string = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '')
 
 export type ToolCall = { id: string; name: string; args: Record<string, unknown> }
 

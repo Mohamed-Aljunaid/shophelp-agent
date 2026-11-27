@@ -1,6 +1,7 @@
 """FastAPI backend for the ShopHelp agent.
 
-  uv run uvicorn api.app:create_app --factory --reload    # http://localhost:8000/docs
+  uv run uvicorn api.app:create_app --factory --reload    # development, http://localhost:8000/docs
+  uv run python -m api                                    # production: API + built frontend on one port
 
 POST /chat               {"session_id"?, "message"} -> agent reply, this turn's tool calls, pending approval
 GET  /sessions/{id}      full conversation, logged-in user, pending approval
@@ -16,6 +17,7 @@ import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
@@ -135,5 +137,8 @@ def create_app(provider: Provider | None = None, conn: sqlite3.Connection | None
             del approvals[approval_id]
             return turn(session_id, Command(resume={"approved": body.approved, "note": body.note}))
 
+    # Production: serve the built frontend from the same origin (added last, so API routes win).
+    if (settings.frontend_dist / "index.html").exists():
+        app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
     return app
 

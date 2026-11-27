@@ -141,3 +141,16 @@ def test_cors_preflight_allows_staff_header(db):
         "Origin": "http://localhost:5280", "Access-Control-Request-Method": "GET",
         "Access-Control-Request-Headers": "x-staff-token"})
     assert r.status_code == 200 and "x-staff-token" in r.headers["access-control-allow-headers"].lower()
+
+
+def test_serves_built_frontend_when_present(db, tmp_path, monkeypatch):
+    from config import settings
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<title>ShopHelp</title>", encoding="utf-8")
+    monkeypatch.setattr(settings, "frontend_dist", dist)
+    c = client(db, [])
+    assert "ShopHelp" in c.get("/").text
+    assert c.get("/health").json()["status"] == "ok"  # API routes still win
+    monkeypatch.setattr(settings, "frontend_dist", tmp_path / "missing")
+    assert client(db, []).get("/").status_code == 404  # no build: API only
