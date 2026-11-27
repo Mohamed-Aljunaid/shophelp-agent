@@ -1,6 +1,7 @@
 """Run tau3-bench retail tasks against our agent: an LLM plays the customer, then
 the final shop DB is compared with the DB after replaying the task's gold actions.
 
+  uv run python -m eval.runner                      # the configured subset (EVAL_* in .env)
   uv run python -m eval.runner --task 66            # one task, prints the transcript
   uv run python -m eval.runner --task 66 --task 69  # several
 
@@ -20,6 +21,7 @@ from pathlib import Path
 from langgraph.errors import GraphRecursionError
 
 from agent.graph import build_graph
+from config import Settings, settings
 from llm import LLMError, Provider, get_provider
 from shop_db import store
 from tools.policy import TOOLS
@@ -53,6 +55,16 @@ def load_tasks(ids: list[str] | None = None) -> list[dict]:
     """All tau3 retail tasks, or only the given ids (in the given order)."""
     tasks = {t["id"]: t for t in json.loads(TASKS_PATH.read_text(encoding="utf-8"))}
     return [tasks[i] for i in ids] if ids else list(tasks.values())
+
+
+def select_tasks(s: Settings = settings) -> list[dict]:
+    """The configured subset: EVAL_TASK_IDS, else the first EVAL_TASK_COUNT tasks of EVAL_SPLIT."""
+    if ids := [i.strip() for i in s.eval_task_ids.split(",") if i.strip()]:
+        return load_tasks(ids)
+    splits = json.loads((TASKS_PATH.parent / "split_tasks.json").read_text(encoding="utf-8"))
+    if s.eval_split not in splits:
+        raise ValueError(f"Unknown EVAL_SPLIT {s.eval_split!r}; use one of {sorted(splits)}")
+    return load_tasks(splits[s.eval_split][: s.eval_task_count])
 
 
 def user_system_prompt(task: dict) -> str:
@@ -155,10 +167,10 @@ def clean_db_path() -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--task", action="append", required=True, help="task id (repeatable)")
+    parser.add_argument("--task", action="append", help="task id (repeatable); default: the configured subset")
     args = parser.parse_args()
     provider, clean = get_provider(), clean_db_path()
-    for task in load_tasks(args.task):
+    for task in load_tasks(args.task) if args.task else select_tasks():
         result = run_task(task, provider, clean)
         print(f"\n=== task {task['id']} ===")
         for m in result["messages"]:

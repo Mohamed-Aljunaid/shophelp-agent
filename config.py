@@ -24,5 +24,10 @@ class Settings(BaseSettings):
 
     db_path: Path = ROOT / "data" / "shop.db"
 
+    eval_split: str = "test"      # tau3 split: test (40), train (74) or base (all 114)
+    eval_task_count: int = 15     # first N tasks of the split
+    eval_task_ids: str = ""       # comma-separated ids; overrides split and count
+    eval_trials: int = 3
+
 
 settings = Settings()

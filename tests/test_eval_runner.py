@@ -74,3 +74,14 @@ def test_communicate_info_checked(clean):
     task["evaluation_criteria"] = {**task["evaluation_criteria"], "communicate_info": ["481.50"]}
     model = Scripted([say("hi"), say("Your refund is $481.50."), say("###STOP###")])
     assert runner.run_task(task, model, clean)["communicate"] == {"481.50": True}
+
+
+def test_select_tasks_from_config():
+    from config import Settings
+    first = runner.select_tasks(Settings(_env_file=None, eval_split="test", eval_task_count=3))
+    assert [t["id"] for t in first] == ["5", "9", "12"]
+    assert len(runner.select_tasks(Settings(_env_file=None, eval_split="base", eval_task_count=200))) == 114
+    picked = runner.select_tasks(Settings(_env_file=None, eval_task_ids="88, 66"))
+    assert [t["id"] for t in picked] == ["88", "66"]
+    with pytest.raises(ValueError, match="EVAL_SPLIT"):
+        runner.select_tasks(Settings(_env_file=None, eval_split="dev"))
