@@ -11,6 +11,7 @@ from typing import Annotated, TypedDict
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from agent.prompt import system_prompt
 from llm import Provider
 from tools.policy import ShopSession
 from tools.schemas import TOOL_SPECS
@@ -21,8 +22,9 @@ class State(TypedDict):
     user_id: str | None
 
 
-def build_graph(provider: Provider, conn: sqlite3.Connection, system: str, checkpointer=None):
+def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None = None, checkpointer=None):
     """Compile the agent graph. Invoke with {"messages": [user msg]} and a thread_id."""
+    system = system or system_prompt()
 
     def model(state: State) -> dict:
         reply = provider.chat(system, state["messages"], TOOL_SPECS)

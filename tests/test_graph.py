@@ -100,3 +100,16 @@ def test_threads_are_separate(conn):
 def test_invalid_args_rejected_by_policy(conn):
     with pytest.raises(ValueError, match="Invalid arguments"):
         ShopSession(conn).call("find_user_id_by_email")
+
+
+def test_system_prompt_has_rules_and_policy(conn):
+    from agent.prompt import system_prompt
+    prompt = system_prompt()
+    for phrase in ["Authenticate first", "Never invent information", 'explicit "yes"', "<policy>",
+                   "Cancel pending order"]:
+        assert phrase.lower() in prompt.lower()
+    model = Scripted([LLMResponse(text="hi")])
+    sent = {}
+    model._chat = lambda system, messages, tools: sent.update(system=system) or LLMResponse(text="hi")
+    ask(build_graph(model, conn), "hello")
+    assert sent["system"] == prompt  # default prompt is used by the graph
