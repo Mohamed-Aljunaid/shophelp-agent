@@ -26,7 +26,7 @@ uv run python -m shop_db.fetch   # download the τ³-bench retail data into data
 uv run python -m shop_db.store   # build (or reset) data/shop.db
 uv run python -m agent.cli --reset   # chat with the agent in the terminal (needs GEMINI_API_KEY and GEMINI_MODEL)
 uv run uvicorn api.app:create_app --factory --reload   # API on http://localhost:8000 (docs at /docs)
-cd frontend; npm install; npm run dev   # chat app on http://localhost:5280
+cd frontend; npm install; npm run dev   # chat app on http://localhost:5280, staff approvals at /#staff
 uv run pytest           # run the tests
 ```
 

@@ -253,3 +253,120 @@ input:disabled {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.staff-link {
+  margin-left: auto;
+  margin-right: 1rem;
+  color: var(--accent);
+}
+
+.staff {
+  max-width: 760px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  background: #fff;
+  border-inline: 1px solid var(--border);
+}
+
+.staff main {
+  padding: 1rem;
+}
+
+.staff a {
+  color: var(--accent);
+}
+
+.token-form {
+  flex-wrap: wrap;
+  align-items: center;
+  border-top: 0;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.toolbar span {
+  flex: 1;
+  color: #59636e;
+}
+
+.staff .notice,
+.staff .error {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+}
+
+.approvals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.approvals li {
+  border: 1px solid var(--border);
+  border-left: 4px solid #9a6700;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.approvals .amount {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.approvals .amount span {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #59636e;
+}
+
+.approvals dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.approvals dt {
+  font-weight: 600;
+  color: #59636e;
+}
+
+.approvals dd {
+  margin: 0;
+}
+
+.approvals pre {
+  margin: 0;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
+.approvals label {
+  display: block;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.approvals input {
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+button.danger {
+  background: #cf222e;
+}

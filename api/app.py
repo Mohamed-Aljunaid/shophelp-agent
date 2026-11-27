@@ -4,15 +4,17 @@
 
 POST /chat               {"session_id"?, "message"} -> agent reply, this turn's tool calls, pending approval
 GET  /sessions/{id}      full conversation, logged-in user, pending approval
-POST /approvals/{id}     {"approved", "note"?} + X-Staff-Token header -> staff decision; the agent continues
+GET  /approvals           (staff) refunds waiting for a decision
+POST /approvals/{id}     (staff) {"approved", "note"?} -> decision; the agent continues
 GET  /health
+Staff endpoints need the X-Staff-Token header (STAFF_TOKEN in .env).
 """
 import secrets
 import sqlite3
 import threading
 import uuid
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.types import Command
 from pydantic import BaseModel, Field
@@ -101,13 +103,30 @@ def create_app(provider: Provider | None = None, conn: sqlite3.Connection | None
         return {"session_id": session_id, "user_id": state.values.get("user_id"),
                 "messages": public(state.values.get("messages", [])), "pending_approval": pending(session_id)}
 
-    @app.post("/approvals/{approval_id}")
-    def decide(approval_id: str, body: ApprovalIn, x_staff_token: str = Header(default="")) -> dict:
-        # Customers use the same API, so only staff holding the token may decide refunds.
+    def require_staff(x_staff_token: str = Header(default="")) -> None:
+        """Customers use the same API, so only staff holding the token may see or decide refunds."""
         if not staff_token:
             raise HTTPException(503, "Approvals are disabled: set STAFF_TOKEN")
         if not secrets.compare_digest(x_staff_token, staff_token):
             raise HTTPException(403, "Staff token required")
+
+    @app.get("/approvals", dependencies=[Depends(require_staff)])
+    def list_approvals() -> list[dict]:
+        """All refunds waiting for staff, oldest first, with the customer's last message for context."""
+        with lock:
+            out = []
+            for approval_id, session_id in list(approvals.items()):
+                current = pending(session_id)
+                if not current or current["id"] != approval_id:
+                    del approvals[approval_id]  # decided or replaced meanwhile
+                    continue
+                messages = graph.get_state(config(session_id)).values["messages"]
+                last_user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+                out.append({**current, "session_id": session_id, "customer_message": last_user})
+            return out
+
+    @app.post("/approvals/{approval_id}", dependencies=[Depends(require_staff)])
+    def decide(approval_id: str, body: ApprovalIn) -> dict:
         with lock:
             session_id = approvals.get(approval_id)
             current = pending(session_id) if session_id else None

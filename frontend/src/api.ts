@@ -52,3 +52,23 @@ export function sendChat(message: string, sessionId: string | null): Promise<Cha
 export function getSession(sessionId: string): Promise<Session> {
   return request(`/sessions/${encodeURIComponent(sessionId)}`)
 }
+
+// Staff endpoints: need the STAFF_TOKEN from the server's .env.
+
+export type PendingApproval = Approval & { session_id: string; customer_message: string }
+
+function staffHeaders(token: string) {
+  return { 'X-Staff-Token': token }
+}
+
+export function listApprovals(token: string): Promise<PendingApproval[]> {
+  return request('/approvals', { headers: staffHeaders(token) })
+}
+
+export function decideApproval(token: string, id: string, approved: boolean, note: string): Promise<ChatResponse> {
+  return request(`/approvals/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    headers: staffHeaders(token),
+    body: JSON.stringify({ approved, note }),
+  })
+}

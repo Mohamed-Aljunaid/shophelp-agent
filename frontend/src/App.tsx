@@ -88,6 +88,9 @@ export default function App() {
       <div className="app">
         <header>
           <h1>ShopHelp</h1>
+          <a href="#staff" className="staff-link">
+            Staff view
+          </a>
           <button type="button" className="secondary" onClick={newConversation} disabled={busy}>
             New conversation
           </button>

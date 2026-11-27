@@ -121,3 +121,23 @@ def test_approval_needs_staff_token(db):
 def test_approvals_disabled_without_token(db):
     c = client(db, [], token="")
     assert c.post("/approvals/x", json={"approved": True}, headers={"X-Staff-Token": ""}).status_code == 503
+
+
+def test_list_approvals_for_staff(db):
+    c, _, third = cancel_flow(db)
+    assert c.get("/approvals").status_code == 403  # customers cannot list
+    listed = c.get("/approvals", headers=STAFF).json()
+    assert len(listed) == 1
+    item = listed[0]
+    assert item["id"] == third["pending_approval"]["id"] and item["session_id"] == third["session_id"]
+    assert item["amount"] == 4079.45 and item["customer_message"] == "yes"
+
+    c.post(f"/approvals/{item['id']}", json={"approved": True}, headers=STAFF)
+    assert c.get("/approvals", headers=STAFF).json() == []  # decided -> gone
+
+
+def test_cors_preflight_allows_staff_header(db):
+    r = client(db, []).options("/approvals", headers={
+        "Origin": "http://localhost:5280", "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "x-staff-token"})
+    assert r.status_code == 200 and "x-staff-token" in r.headers["access-control-allow-headers"].lower()
