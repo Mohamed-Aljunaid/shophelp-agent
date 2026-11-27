@@ -6,7 +6,9 @@ A customer support agent for a fictional online shop that checks, cancels, retur
 
 ## Status
 
-Phase 1 – Setup: done (uv project, tests, GitHub repo). Next: Phase 2 – shop data and tools.
+- Phase 1 – Setup: done.
+- Phase 2 – Shop data and tools: done. τ³-bench retail data in SQLite with reset, all 16 retail tools (matching τ³'s database changes exactly), and policy checks in code (log in first, one user, own orders only).
+- Next: Phase 3 – baseline agent.
 
 ## Results
 
@@ -19,6 +21,8 @@ Requires [uv](https://docs.astral.sh/uv/). All caches must be on E: (run `E:\pro
 ```powershell
 uv sync                 # create .venv (Python 3.11) and install dependencies
 copy .env.example .env  # then fill in GEMINI_API_KEY
+uv run python -m shop_db.fetch   # download the τ³-bench retail data into data/
+uv run python -m shop_db.store   # build (or reset) data/shop.db
 uv run pytest           # run the tests
 ```
 

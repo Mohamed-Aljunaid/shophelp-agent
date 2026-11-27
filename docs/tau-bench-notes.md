@@ -28,7 +28,7 @@ Get the files with `uv run python -m shop_db.fetch` (saved to `data/tau2-retail/
 
 **Consequence for our design:** our tools must change the data *exactly* as the τ³ tools do, including field names, sort order, rounding and the extra fields they add. Then we can export our DB back to the `db.json` shape and compare hashes. So the SQLite store must round-trip to identical JSON.
 
-## Tools (15) and how often the 114 tasks use them
+## Tools (16) and how often the 114 tasks use them
 
 | Tool | Kind | Uses | Rule enforced in the tool |
 |---|---|---|---|
@@ -58,9 +58,15 @@ Errors are raised as `ValueError("…")`, and the message is shown to the agent.
 - `exchange_*` and `return_items` lists are stored **sorted**.
 - The order-address and payment tools accept any status that *contains* `pending`, but cancel and modify-items need exactly `pending`.
 
-## Gaps to close in step 2.5 (policy in code)
+## Policy checks we add in code (step 2.5, `tools/policy.py`)
 
-The τ³ tools do **not** check that the order belongs to the authenticated user. They also don't block a second modify-items call: that is blocked only because the status changes. Our tools will add an ownership and authentication check, which never changes the DB outcome of a valid task.
+The τ³ tools do **not** check *who* is asking. `ShopSession` (one per conversation) adds these checks:
+
+- Every account tool needs an authenticated user. Only `calculate` and `transfer_to_human_agents` work before login.
+- One user per conversation: logging in as a second user is refused.
+- `user_id` and `order_id` arguments must belong to the logged-in user. Another user's order shows as "Order not found", so we don't reveal that it exists.
+
+These checks never block an expected action: a test replays all 114 tasks through `ShopSession`. Some expected lookups fail on purpose, when the simulated customer gives a wrong email or zip.
 
 ## Policy rules the prompt alone covers in τ³ (we will also enforce some in code)
 

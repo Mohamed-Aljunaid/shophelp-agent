@@ -27,9 +27,10 @@ The full plan is in `PLAN.md`. Read it before doing anything.
 - PLAN.md calls the data-loading module `data/`; it is `shop_db/` here instead, so that `data/` holds only raw files and the SQLite database (ignored by Git).
 - Policy rules must be enforced in tool code, not only in the prompt.
 - Benchmark: use the τ³-bench retail domain (`sierra-research/tau2-bench`, pinned in `shop_db/fetch.py`), not the outdated original tau-bench. Notes: `docs/tau-bench-notes.md`.
-- Build the full τ³ retail tool set (15 tools), not only those listed in PLAN.md step 2.4. Tools must change the data exactly as τ³ does, because scoring compares DB hashes.
+- Build the full τ³ retail tool set (16 tools), not only those listed in PLAN.md step 2.4. Tools must change the data exactly as τ³ does, because scoring compares DB hashes.
 
 ## Progress
 
 - [x] Phase 1 – Setup (uv project, Python 3.11, Git, GitHub: Mohamed-Aljunaid/shophelp-agent)
-- [ ] Phase 2 – Shop data and tools (2.1–2.4 done; next: step 2.5, policy checks in code)
+- [x] Phase 2 – Shop data and tools (SQLite store, 16 tools, policy layer `tools/policy.py`)
+- [ ] Phase 3 – Baseline agent (next: step 3.1, LLM provider interface)
