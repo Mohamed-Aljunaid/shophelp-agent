@@ -23,6 +23,7 @@ uv sync                 # create .venv (Python 3.11) and install dependencies
 copy .env.example .env  # then fill in GEMINI_API_KEY
 uv run python -m shop_db.fetch   # download the τ³-bench retail data into data/
 uv run python -m shop_db.store   # build (or reset) data/shop.db
+uv run python -m agent.cli --reset   # chat with the agent in the terminal (needs GEMINI_API_KEY and GEMINI_MODEL)
 uv run pytest           # run the tests
 ```
 
