@@ -7,9 +7,11 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.165.0",
     "google-genai>=3.6.1",
     "langgraph>=1.2.24",
     "pydantic-settings>=2.16.3",
+    "uvicorn>=0.54.0",
 ]
 
 [tool.uv]
@@ -17,6 +19,7 @@ package = false
 
 [dependency-groups]
 dev = [
+    "httpx>=0.29.0",
     "pytest>=9.2.0",
 ]
 
