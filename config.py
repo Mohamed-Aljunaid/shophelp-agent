@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     db_path: Path = ROOT / "data" / "shop.db"
     refund_approval_threshold: float = 200.0  # refunds above this need staff approval
-    cors_origins: list[str] = ["http://localhost:5173"]  # the Vite dev server
+    cors_origins: list[str] = ["http://localhost:5280"]  # the Vite dev server (frontend/vite.config.ts)
     staff_token: str = ""  # required in X-Staff-Token for POST /approvals; empty = approvals disabled
 
     eval_split: str = "test"      # tau3 split: test (40), train (74) or base (all 114)

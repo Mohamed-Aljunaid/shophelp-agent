@@ -104,9 +104,9 @@ def test_llm_unavailable_is_503(db):
 
 
 def test_cors_allows_vite_dev_server(db):
-    r = client(db, []).options("/chat", headers={"Origin": "http://localhost:5173",
+    r = client(db, []).options("/chat", headers={"Origin": "http://localhost:5280",
                                                  "Access-Control-Request-Method": "POST"})
-    assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert r.headers["access-control-allow-origin"] == "http://localhost:5280"
 
 
 def test_approval_needs_staff_token(db):

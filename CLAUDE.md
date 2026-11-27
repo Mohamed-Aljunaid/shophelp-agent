@@ -36,4 +36,4 @@ The full plan is in `PLAN.md`. Read it before doing anything.
 - [x] Phase 3 – Baseline agent (llm/ Gemini provider, agent/graph.py LangGraph loop, agent/prompt.py, agent/cli.py; live chat verified with gemini-3.5-flash-lite)
 - [ ] Phase 4 – Evaluation baseline (4.1 runner, 4.2 subset config EVAL_*; 4.3 trials + pass^k in eval/metrics.py; next: step 4.4, reports + failure analysis; baseline run in progress, then failure analysis + README)
 - [ ] Phase 5 – Safety and improvements (5.1 auth step in graph, 5.2 confirmation step agent/confirm.py; 5.3 staff approval via interrupt agent/approval.py; 5.4 guardrails agent/guardrails.py; next: finish baseline (quota), then step 5.5 re-run + compare)
-- [ ] Phase 6 – API and frontend (6.1 FastAPI api/app.py done; next: step 6.2, React chat app)
+- [ ] Phase 6 – API and frontend (6.1 FastAPI api/app.py, 6.2 React chat frontend/ on :5280; next: step 6.3, tool-call side panel)
