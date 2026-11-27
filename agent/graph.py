@@ -14,6 +14,7 @@ from langgraph.types import interrupt
 
 from agent.approval import refund_amount
 from agent.confirm import confirmation_problem
+from agent.guardrails import GUARD_NOTE, bypass_attempt
 from agent.prompt import system_prompt
 from config import settings
 from llm import Provider
@@ -41,7 +42,9 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
     def model(state: State) -> dict:
         # Authentication step: until a user is verified, the model is only offered login tools.
         tools = TOOL_SPECS if state.get("user_id") else PRE_AUTH_SPECS
-        reply = provider.chat(system, state["messages"], tools)
+        last_user = next((m["content"] for m in reversed(state["messages"]) if m["role"] == "user"), "")
+        turn_system = system + GUARD_NOTE if bypass_attempt(last_user) else system
+        reply = provider.chat(turn_system, state["messages"], tools)
         return {"messages": [reply.to_message()]}
 
     def needs_approval(history, user_id, call) -> float:
