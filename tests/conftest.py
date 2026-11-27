@@ -14,3 +14,12 @@ def conn(tmp_path_factory):
     c = store.connect(path)
     yield c
     c.close()
+
+
+@pytest.fixture(autouse=True)
+def events_log(tmp_path, monkeypatch):
+    """Every test writes monitoring events to its own temp file, never to data/logs/."""
+    from config import settings
+    path = tmp_path / "events.jsonl"
+    monkeypatch.setattr(settings, "events_log", path)
+    return path

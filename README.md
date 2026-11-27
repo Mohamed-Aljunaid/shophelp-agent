@@ -31,3 +31,15 @@ uv run pytest           # run the tests
 ```
 
 More instructions will be added as the project is built.
+
+## Monitoring
+
+Every conversation is logged locally to `data/logs/events.jsonl`: each LLM call (latency, input/output tokens, cache hit), tool call (ok or error), escalation (transfer to a human, staff approval and its decision) and guardrail flag. No service is needed.
+
+```powershell
+uv run python -m agent.monitor            # per-conversation report (last 20)
+uv run python -m agent.monitor --last 100
+```
+
+LangSmith tracing is optional: set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` in `.env`. Each LLM call is then traced with its conversation, tool names and token usage, inside the LangGraph run.
+

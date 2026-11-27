@@ -6,8 +6,10 @@ the authenticated user id, so login survives across turns.
 import json
 import operator
 import sqlite3
+import time
 from typing import Annotated, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
@@ -15,6 +17,7 @@ from langgraph.types import interrupt
 from agent.approval import refund_amount
 from agent.confirm import confirmation_problem
 from agent.guardrails import GUARD_NOTE, bypass_attempt
+from agent.monitor import log_event
 from agent.prompt import system_prompt
 from config import settings
 from llm import Provider
@@ -39,12 +42,27 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
         approval_threshold = settings.refund_approval_threshold
     system = system or system_prompt()
 
-    def model(state: State) -> dict:
+    def session_of(config: RunnableConfig) -> str:
+        return config["configurable"]["thread_id"]
+
+    def model(state: State, config: RunnableConfig) -> dict:
         # Authentication step: until a user is verified, the model is only offered login tools.
         tools = TOOL_SPECS if state.get("user_id") else PRE_AUTH_SPECS
         last_user = next((m["content"] for m in reversed(state["messages"]) if m["role"] == "user"), "")
-        turn_system = system + GUARD_NOTE if bypass_attempt(last_user) else system
-        reply = provider.chat(turn_system, state["messages"], tools)
+        flagged = bypass_attempt(last_user)
+        if flagged and state["messages"][-1]["role"] == "user":  # log once per customer message
+            log_event(session_of(config), "guardrail")
+        turn_system = system + GUARD_NOTE if flagged else system
+        start = time.perf_counter()
+        try:
+            reply = provider.chat(turn_system, state["messages"], tools)
+        except Exception as exc:
+            log_event(session_of(config), "llm_error", latency_ms=round((time.perf_counter() - start) * 1000),
+                      error=f"{type(exc).__name__}: {exc}"[:300])
+            raise
+        log_event(session_of(config), "llm", latency_ms=round((time.perf_counter() - start) * 1000),
+                  input_tokens=reply.usage.get("input_tokens", 0), output_tokens=reply.usage.get("output_tokens", 0),
+                  cached=reply.cached, tool_calls=len(reply.tool_calls))
         return {"messages": [reply.to_message()]}
 
     def needs_approval(history, user_id, call) -> float:
@@ -54,7 +72,7 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
         amount = refund_amount(conn, call["name"], call["args"])
         return amount if amount > approval_threshold else 0.0
 
-    def tools(state: State) -> dict:
+    def tools(state: State, config: RunnableConfig) -> dict:
         calls, history = state["messages"][-1]["tool_calls"], state["messages"][:-1]
         # Ask staff BEFORE running anything: on resume LangGraph re-runs this node from the top.
         decisions = {}
@@ -71,11 +89,13 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
                 if session.user_id and call["name"] in WRITE_TOOLS and (problem := confirmation_problem(
                         history, call["name"], call["args"])):
                     raise ValueError(problem)
-                if needs_approval(history, session.user_id, call):
+                if amount := needs_approval(history, session.user_id, call):
                     decision = decisions.get(call["id"])
                     if decision is None:  # user logged in within this same batch; approval comes next time
                         raise ValueError("This refund needs staff approval. Call the tool again on its own.")
-                    if not (isinstance(decision, dict) and decision.get("approved") is True):  # anything else = reject
+                    approved = isinstance(decision, dict) and decision.get("approved") is True  # anything else = reject
+                    log_event(session_of(config), "escalation", kind="approval", amount=amount, approved=approved)
+                    if not approved:
                         note = decision.get("note") if isinstance(decision, dict) else None
                         note = f" Staff note: {note}" if note else ""
                         raise ValueError(f"Staff rejected this refund; nothing was changed.{note} "
@@ -84,6 +104,11 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
                 content = out if isinstance(out, str) else json.dumps(out)
             except ValueError as exc:
                 content = f"Error: {exc}"
+            ok = not content.startswith("Error:")
+            # Logged here, not above: this loop runs once, the interrupt section re-runs on resume.
+            log_event(session_of(config), "tool", name=call["name"], ok=ok, error=None if ok else content[7:][:200])
+            if ok and call["name"] == "transfer_to_human_agents":
+                log_event(session_of(config), "escalation", kind="transfer")
             results.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"], "content": content})
         return {"messages": results, "user_id": session.user_id}
 
