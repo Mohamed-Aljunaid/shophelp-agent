@@ -5,6 +5,7 @@ is asking. A ShopSession is one conversation: every account tool needs an
 authenticated user, and only that user's profile and orders can be touched.
 The agent calls tools only through ShopSession.call.
 """
+import inspect
 import sqlite3
 
 from tools import action_tools, read_tools
@@ -38,6 +39,10 @@ class ShopSession:
         """Run a tool by name after the policy checks. Raises ValueError if blocked."""
         if name not in TOOLS:
             raise ValueError(f"Unknown tool: {name}")
+        try:  # args come from the model: reject missing or unknown ones cleanly
+            inspect.signature(TOOLS[name]).bind(self.conn, **args)
+        except TypeError as exc:
+            raise ValueError(f"Invalid arguments for {name}: {exc}") from None
         if name not in AUTH_TOOLS | OPEN_TOOLS:
             if self.user_id is None:
                 raise ValueError("Authenticate the user first (email, or name + zip code)")
