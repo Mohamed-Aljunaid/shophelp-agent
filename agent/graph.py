@@ -11,9 +11,10 @@ from typing import Annotated, TypedDict
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from agent.confirm import confirmation_problem
 from agent.prompt import system_prompt
 from llm import Provider
-from tools.policy import AUTH_TOOLS, OPEN_TOOLS, ShopSession
+from tools.policy import AUTH_TOOLS, OPEN_TOOLS, WRITE_TOOLS, ShopSession
 from tools.schemas import TOOL_SPECS
 
 PRE_AUTH_SPECS = [s for s in TOOL_SPECS if s["name"] in AUTH_TOOLS | OPEN_TOOLS]
@@ -40,6 +41,9 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
         results = []
         for call in state["messages"][-1]["tool_calls"]:
             try:
+                if session.user_id and call["name"] in WRITE_TOOLS and (problem := confirmation_problem(
+                        state["messages"][:-1], call["name"], call["args"])):
+                    raise ValueError(problem)
                 out = session.call(call["name"], **call["args"])
                 content = out if isinstance(out, str) else json.dumps(out)
             except ValueError as exc:

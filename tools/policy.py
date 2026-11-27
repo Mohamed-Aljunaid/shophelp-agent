@@ -26,6 +26,7 @@ TOOLS = {
 }
 AUTH_TOOLS = {"find_user_id_by_email", "find_user_id_by_name_zip"}
 OPEN_TOOLS = {"calculate", "transfer_to_human_agents"}  # usable before authentication
+WRITE_TOOLS = {n for n in TOOLS if TOOLS[n].__module__ == action_tools.__name__} - {"transfer_to_human_agents"}
 
 
 class ShopSession:

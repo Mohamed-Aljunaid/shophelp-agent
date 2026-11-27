@@ -60,6 +60,7 @@ def test_login_then_cancel_across_turns(conn):
     model = Scripted([
         call("find_user_id_by_email", email=email),
         LLMResponse(text="You're verified. What can I do?"),
+        LLMResponse(text=f"I will cancel order {ORDER}, reason 'no longer needed'. Shall I proceed (yes/no)?"),
         call("cancel_pending_order", order_id=ORDER, reason="no longer needed"),
         LLMResponse(text="Your order is cancelled."),
     ])
@@ -68,10 +69,44 @@ def test_login_then_cancel_across_turns(conn):
     assert first["messages"][-1]["content"] == "You're verified. What can I do?"
     assert first["user_id"] == "ethan_lopez_6291"
 
-    second = ask(graph, "Cancel my order, no longer needed. Yes, go ahead.")
-    assert second["messages"][-1]["content"] == "Your order is cancelled."
+    ask(graph, "Cancel my order, I don't need it anymore.")
+    third = ask(graph, "Yes, go ahead.")
+    assert third["messages"][-1]["content"] == "Your order is cancelled."
     assert store.get(conn, "orders", ORDER)["status"] == "cancelled"
-    assert [m["role"] for m in second["messages"]] == ["user", "assistant", "tool", "assistant"] * 2
+    assert [m["role"] for m in third["messages"]] == (
+        ["user", "assistant", "tool", "assistant", "user", "assistant", "user", "assistant", "tool", "assistant"])
+
+
+def logged_in(conn, replies):
+    """Graph whose first turn logs Ethan in; returns (graph, model)."""
+    email = store.get(conn, "users", "ethan_lopez_6291")["email"]
+    model = Scripted([call("find_user_id_by_email", email=email), LLMResponse(text="Verified.")] + replies)
+    graph = build_graph(model, conn, "sys")
+    ask(graph, email)
+    return graph, model
+
+
+@pytest.mark.parametrize("summary,answer,error", [
+    (None, "Cancel #W6779827, no longer needed.", "Not confirmed"),                  # never asked
+    (f"Cancel {ORDER}? (yes/no)", "No, wait.", "Not confirmed"),                     # customer said no
+    ("Cancel your latest order? (yes/no)", "yes", "did not mention order_id"),       # summary too vague
+])
+def test_write_blocked_without_clear_confirmation(conn, summary, answer, error):
+    replies = ([LLMResponse(text=summary)] if summary else []) + [
+        call("cancel_pending_order", order_id=ORDER, reason="no longer needed"), LLMResponse(text="ok")]
+    graph, _ = logged_in(conn, replies)
+    if summary:
+        ask(graph, "cancel my order")
+    out = ask(graph, answer)
+    assert error in [m["content"] for m in out["messages"] if m["role"] == "tool"][-1]
+    assert store.get(conn, "orders", ORDER)["status"] == "pending"
+
+
+def test_reads_need_no_confirmation(conn):
+    graph, _ = logged_in(conn, [call("get_order_details", order_id=ORDER), LLMResponse(text="It's pending.")])
+    out = ask(graph, "status of my order?")
+    assert out["messages"][-1]["content"] == "It's pending."
+    assert not [m for m in out["messages"] if m["role"] == "tool" and m["content"].startswith("Error")]
 
 
 def test_policy_errors_go_back_to_model(conn):
