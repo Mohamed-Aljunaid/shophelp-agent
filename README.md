@@ -8,7 +8,8 @@ A customer support agent for a fictional online shop that checks, cancels, retur
 
 - Phase 1 – Setup: done.
 - Phase 2 – Shop data and tools: done. τ³-bench retail data in SQLite with reset, all 16 retail tools (matching τ³'s database changes exactly), and policy checks in code (log in first, one user, own orders only).
-- Next: Phase 3 – baseline agent.
+- Phase 3 – Baseline agent: done. LangGraph tool-calling loop on Gemini (Claude/OpenAI stubs), system prompt with the shop policy, and a terminal chat. A live chat logs a customer in, confirms, and cancels an order correctly.
+- Next: Phase 4 – evaluation on τ³-bench retail tasks.
 
 ## Results
 

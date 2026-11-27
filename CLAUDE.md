@@ -33,4 +33,5 @@ The full plan is in `PLAN.md`. Read it before doing anything.
 
 - [x] Phase 1 – Setup (uv project, Python 3.11, Git, GitHub: Mohamed-Aljunaid/shophelp-agent)
 - [x] Phase 2 – Shop data and tools (SQLite store, 16 tools, policy layer `tools/policy.py`)
-- [ ] Phase 3 – Baseline agent (3.1–3.2 done: llm/ provider, agent/graph.py loop; 3.3 agent/prompt.py, 3.4 agent/cli.py; phase done-check (manual Gemini chat) pending a .env key)
+- [x] Phase 3 – Baseline agent (llm/ Gemini provider, agent/graph.py LangGraph loop, agent/prompt.py, agent/cli.py; live chat verified with gemini-3.5-flash-lite)
+- [ ] Phase 4 – Evaluation baseline (next: step 4.1, connect to τ³ retail tasks)
