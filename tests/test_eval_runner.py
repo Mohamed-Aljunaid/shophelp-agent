@@ -85,3 +85,13 @@ def test_select_tasks_from_config():
     assert [t["id"] for t in picked] == ["88", "66"]
     with pytest.raises(ValueError, match="EVAL_SPLIT"):
         runner.select_tasks(Settings(_env_file=None, eval_split="dev"))
+
+
+def test_run_eval_trials_use_separate_cache_salt(clean, monkeypatch):
+    salts = []
+    monkeypatch.setattr(runner, "clean_db_path", lambda: clean)
+    monkeypatch.setattr(runner, "run_task", lambda task, p, c: salts.append(p.cache_salt) or
+                        {"task_id": task["id"], "reward": 1.0, "end": "stop", "user_turns": 1, "tool_calls": 0})
+    results = runner.run_eval(runner.load_tasks(["88", "66"]), 2, Scripted([]))
+    assert salts == ["trial1", "trial1", "trial2", "trial2"]
+    assert [r["trial"] for r in results] == [1, 1, 2, 2]

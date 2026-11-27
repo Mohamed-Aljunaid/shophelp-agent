@@ -34,4 +34,4 @@ The full plan is in `PLAN.md`. Read it before doing anything.
 - [x] Phase 1 – Setup (uv project, Python 3.11, Git, GitHub: Mohamed-Aljunaid/shophelp-agent)
 - [x] Phase 2 – Shop data and tools (SQLite store, 16 tools, policy layer `tools/policy.py`)
 - [x] Phase 3 – Baseline agent (llm/ Gemini provider, agent/graph.py LangGraph loop, agent/prompt.py, agent/cli.py; live chat verified with gemini-3.5-flash-lite)
-- [ ] Phase 4 – Evaluation baseline (4.1 runner, 4.2 subset config EVAL_*; next: step 4.3, trials and pass^k)
+- [ ] Phase 4 – Evaluation baseline (4.1 runner, 4.2 subset config EVAL_*; 4.3 trials + pass^k in eval/metrics.py; next: step 4.4, reports + failure analysis)

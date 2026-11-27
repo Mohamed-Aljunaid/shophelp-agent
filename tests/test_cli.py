@@ -36,6 +36,6 @@ def test_cli_conversation(tmp_path, monkeypatch, capsys):
     assert "[tool] get_order_details({'order_id': '#W6779827'})" in out
     assert "[result] Error: Authenticate the user first" in out
     assert "agent> Please give me your email first." in out
-    assert "[error] RuntimeError: quota" in out
+    assert "[error] LLMError: scripted call failed: RuntimeError: quota" in out
     assert "agent> Still here." in out
     assert db.exists()

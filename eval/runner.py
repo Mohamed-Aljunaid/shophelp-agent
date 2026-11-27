@@ -4,6 +4,7 @@ the final shop DB is compared with the DB after replaying the task's gold action
   uv run python -m eval.runner                      # the configured subset (EVAL_* in .env)
   uv run python -m eval.runner --task 66            # one task, prints the transcript
   uv run python -m eval.runner --task 66 --task 69  # several
+  uv run python -m eval.runner --trials 2 -v        # override EVAL_TRIALS, print conversations
 
 Scoring: reward = 1 if the final DB matches the gold DB exactly, else 0.
 tau3's official reward also needs an LLM judge for NL assertions; we skip that
@@ -21,6 +22,7 @@ from pathlib import Path
 from langgraph.errors import GraphRecursionError
 
 from agent.graph import build_graph
+from eval.metrics import summary
 from config import Settings, settings
 from llm import LLMError, Provider, get_provider
 from shop_db import store
@@ -165,24 +167,48 @@ def clean_db_path() -> Path:
     return path
 
 
+def print_transcript(result: dict) -> None:
+    for m in result["messages"]:
+        if m["role"] == "user":
+            print(f"customer> {m['content']}")
+        elif m["role"] == "assistant":
+            for c in m.get("tool_calls") or []:
+                print(f"  [tool] {c['name']}({c['args']})")
+            if m.get("content"):
+                print(f"agent> {m['content']}")
+
+
+def run_eval(tasks: list[dict], trials: int, provider: Provider, verbose: bool = False) -> list[dict]:
+    """Run every task `trials` times (trial by trial, so partial runs stay balanced)."""
+    clean, results = clean_db_path(), []
+    for trial in range(1, trials + 1):
+        provider.cache_salt = f"trial{trial}"  # each trial gets fresh LLM replies (cached per trial)
+        for task in tasks:
+            result = run_task(task, provider, clean)
+            result["trial"] = trial
+            results.append(result)
+            if verbose:
+                print(f"\n=== task {task['id']} trial {trial} ===")
+                print_transcript(result)
+            print(f"task {task['id']:>3} trial {trial}: reward={result['reward']} end={result['end']} "
+                  f"turns={result['user_turns']} tool_calls={result['tool_calls']}", flush=True)
+    return results
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--task", action="append", help="task id (repeatable); default: the configured subset")
+    parser.add_argument("--trials", type=int, default=settings.eval_trials, help="runs per task (EVAL_TRIALS)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="print each conversation")
     args = parser.parse_args()
-    provider, clean = get_provider(), clean_db_path()
-    for task in load_tasks(args.task) if args.task else select_tasks():
-        result = run_task(task, provider, clean)
-        print(f"\n=== task {task['id']} ===")
-        for m in result["messages"]:
-            if m["role"] == "user":
-                print(f"customer> {m['content']}")
-            elif m["role"] == "assistant":
-                for c in m.get("tool_calls") or []:
-                    print(f"  [tool] {c['name']}({c['args']})")
-                if m.get("content"):
-                    print(f"agent> {m['content']}")
-        print(f"reward={result['reward']} db_match={result['db_match']} end={result['end']} "
-              f"turns={result['user_turns']} tool_calls={result['tool_calls']} communicate={result['communicate']}")
+    tasks = load_tasks(args.task) if args.task else select_tasks()
+    results = run_eval(tasks, args.trials, get_provider(), args.verbose)
+    s = summary(results)
+    print(f"\n{s['tasks']} tasks x {s['trials']} trials")
+    for k, v in s["pass_hat_k"].items():
+        print(f"  pass^{k}: {v:.3f}")
+    print(f"  avg customer turns: {s['avg_user_turns']:.1f}   avg tool calls: {s['avg_tool_calls']:.1f}")
+    print(f"  per task: {s['per_task']}")
 
 
 if __name__ == "__main__":

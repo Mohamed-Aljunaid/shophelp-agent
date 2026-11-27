@@ -74,10 +74,10 @@ def test_retry_then_success(monkeypatch):
 
 def test_no_retry_on_permanent_error_and_gives_up(monkeypatch):
     monkeypatch.setattr("llm.base.time.sleep", lambda s: None)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(LLMError, match="boom"):
         Fake(failures=1, retryable=False).chat("sys", [])
     p = Fake(failures=10, max_retries=2)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(LLMError):
         p.chat("sys", [])
     assert p.calls == 3
 
@@ -88,6 +88,8 @@ def test_cache_hit_skips_call(tmp_path):
     assert p.chat("sys", msgs).text == "reply 1"
     assert p.chat("sys", msgs).text == "reply 1" and p.calls == 1
     assert p.chat("other", msgs).text == "reply 2"
+    p.cache_salt = "trial2"
+    assert p.chat("sys", msgs).text == "reply 3"  # a new trial is not served from cache
 
 
 def test_throttle_spaces_calls(monkeypatch):

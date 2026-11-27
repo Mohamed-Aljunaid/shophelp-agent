@@ -48,11 +48,12 @@ class Provider:
         self._last_call = 0.0
         self._lock = threading.Lock()
         self._cache = _Cache(cache_path) if cache_path else None
+        self.cache_salt = ""  # e.g. the eval trial number, so repeated trials are not replays
 
     def chat(self, system: str, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:
         """Send the conversation; return text and/or tool calls."""
         tools = tools or []
-        key = _key(self.name, self.model, system, messages, tools)
+        key = _key(self.name, self.model, self.cache_salt, system, messages, tools)
         if self._cache and (hit := self._cache.get(key)):
             return LLMResponse(**hit)
         response = self._with_retry(system, messages, tools)
@@ -67,7 +68,7 @@ class Provider:
                 return self._chat(system, messages, tools)
             except Exception as exc:
                 if attempt == self.max_retries or not self._is_retryable(exc):
-                    raise
+                    raise LLMError(f"{self.name} call failed: {type(exc).__name__}: {exc}") from exc
                 time.sleep(min(60.0, 2.0 * 2**attempt) + random.random())  # backoff + jitter
         raise AssertionError("unreachable")
 
