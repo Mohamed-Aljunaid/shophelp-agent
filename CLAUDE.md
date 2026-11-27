@@ -33,4 +33,4 @@ The full plan is in `PLAN.md`. Read it before doing anything.
 
 - [x] Phase 1 – Setup (uv project, Python 3.11, Git, GitHub: Mohamed-Aljunaid/shophelp-agent)
 - [x] Phase 2 – Shop data and tools (SQLite store, 16 tools, policy layer `tools/policy.py`)
-- [ ] Phase 3 – Baseline agent (next: step 3.1, LLM provider interface)
+- [ ] Phase 3 – Baseline agent (3.1 done: llm/ Gemini provider; next: step 3.2, LangGraph loop)

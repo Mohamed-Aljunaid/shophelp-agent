@@ -6,16 +6,15 @@ which evaluation needs (it compares whole-DB hashes).
 Reset to a clean state: uv run python -m shop_db.store
 """
 import json
-import os
 import sqlite3
 from pathlib import Path
 
+from config import settings
 from shop_db.fetch import DEST
 
 TABLES = ("users", "orders", "products")
 SOURCE = DEST / "db.json"
-# shortcut: reads DB_PATH from the process env only, not .env; switch to pydantic-settings when config grows.
-DB_PATH = Path(os.environ.get("DB_PATH", Path(__file__).resolve().parent.parent / "data" / "shop.db"))
+DB_PATH = settings.db_path
 
 
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
