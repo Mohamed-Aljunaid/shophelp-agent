@@ -44,6 +44,14 @@ def test_from_response_keeps_thought_signature_for_replay():
     assert replay.parts[1].function_call.id == out.tool_calls[0]["id"]
 
 
+def test_from_response_reads_token_usage():
+    resp = gemini_response(types.Part(text="hi"))
+    resp.usage_metadata = types.GenerateContentResponseUsageMetadata(
+        prompt_token_count=120, candidates_token_count=8, thoughts_token_count=30)
+    assert from_response(resp).usage == {"input_tokens": 120, "output_tokens": 38}  # thinking counts as output
+    assert from_response(gemini_response(types.Part(text="hi"))).usage == {}
+
+
 def test_from_response_empty_raises():
     with pytest.raises(LLMError):
         from_response(types.GenerateContentResponse(candidates=[]))
@@ -86,7 +94,8 @@ def test_cache_hit_skips_call(tmp_path):
     p = Fake(cache_path=tmp_path / "c.sqlite")
     msgs = [{"role": "user", "content": "x"}]
     assert p.chat("sys", msgs).text == "reply 1"
-    assert p.chat("sys", msgs).text == "reply 1" and p.calls == 1
+    hit = p.chat("sys", msgs)
+    assert hit.text == "reply 1" and hit.cached and p.calls == 1
     assert p.chat("other", msgs).text == "reply 2"
     p.cache_salt = "trial2"
     assert p.chat("sys", msgs).text == "reply 3"  # a new trial is not served from cache
@@ -128,3 +137,23 @@ def test_gemini_live():
     msgs += [first.to_message(), {"role": "tool", "tool_call_id": first.tool_calls[0]["id"],
                                   "name": "get_order_details", "content": '{"status": "processed"}'}]
     assert "processed" in p.chat("You are a shop assistant.", msgs, [TOOL]).text.lower()
+
+
+def test_tracing_env_only_with_key(monkeypatch):
+    from config import apply_tracing_env
+    for var in ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_PROJECT"):
+        monkeypatch.delenv(var, raising=False)
+    assert not apply_tracing_env(Settings(_env_file=None, langsmith_tracing=True))  # no key: stays off
+    assert "LANGSMITH_TRACING" not in __import__("os").environ
+    assert apply_tracing_env(Settings(_env_file=None, langsmith_tracing=True, langsmith_api_key="k"))
+    assert __import__("os").environ["LANGSMITH_PROJECT"] == "shophelp-agent"
+
+
+def test_trace_payloads_skip_prompt_and_provider_data():
+    from llm.base import _trace_inputs, _trace_outputs
+    ins = _trace_inputs({"self": object(), "system": "x" * 2000, "tools": [TOOL],
+                         "messages": [{"role": "assistant", "content": "hi", "provider_data": {"big": 1}}]})
+    assert ins == {"messages": [{"role": "assistant", "content": "hi"}], "tools": ["get_order_details"],
+                   "system_chars": 2000}
+    out = _trace_outputs(LLMResponse(text="ok", usage={"input_tokens": 10, "output_tokens": 5}))
+    assert out["usage_metadata"] == {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}

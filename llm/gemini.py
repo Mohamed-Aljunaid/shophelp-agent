@@ -77,4 +77,7 @@ def from_response(resp: types.GenerateContentResponse) -> LLMResponse:
             calls.append({"id": p.function_call.id, "name": p.function_call.name,
                           "args": dict(p.function_call.args or {})})
     data = json.loads(json.dumps(content.model_dump(mode="json", exclude_none=True)))
-    return LLMResponse(text=text, tool_calls=calls, provider_data={"gemini_content": data})
+    meta = resp.usage_metadata
+    usage = {"input_tokens": meta.prompt_token_count or 0,
+             "output_tokens": (meta.candidates_token_count or 0) + (meta.thoughts_token_count or 0)} if meta else {}
+    return LLMResponse(text=text, tool_calls=calls, provider_data={"gemini_content": data}, usage=usage)

@@ -1,4 +1,5 @@
 """App settings, read from environment variables and .env (see .env.example)."""
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +24,12 @@ class Settings(BaseSettings):
     llm_cache_path: Path = ROOT / "data" / "llm_cache.sqlite"
 
     db_path: Path = ROOT / "data" / "shop.db"
+
+    # Tracing: LangSmith is optional (may be blocked); the local event log is always on.
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_project: str = "shophelp-agent"
+    events_log: Path = ROOT / "data" / "logs" / "events.jsonl"
     refund_approval_threshold: float = 200.0  # refunds above this need staff approval
     cors_origins: list[str] = ["http://localhost:5280"]  # the Vite dev server (frontend/vite.config.ts)
     staff_token: str = ""  # required in X-Staff-Token for POST /approvals; empty = approvals disabled
@@ -33,4 +40,15 @@ class Settings(BaseSettings):
     eval_trials: int = 3
 
 
+
+def apply_tracing_env(s: Settings) -> bool:
+    """LangSmith reads os.environ, not our .env: export its settings when tracing is on."""
+    if not (s.langsmith_tracing and s.langsmith_api_key):
+        return False
+    os.environ.update(LANGSMITH_TRACING="true", LANGSMITH_API_KEY=s.langsmith_api_key,
+                      LANGSMITH_PROJECT=s.langsmith_project)
+    return True
+
+
 settings = Settings()
+apply_tracing_env(settings)
