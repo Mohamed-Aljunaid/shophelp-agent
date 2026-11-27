@@ -23,8 +23,12 @@ def db(tmp_path):
     conn.close()
 
 
-def client(db, replies):
-    return TestClient(create_app(Scripted(replies), db))
+TOKEN = "test-staff-token"
+STAFF = {"X-Staff-Token": TOKEN}
+
+
+def client(db, replies, token=TOKEN):
+    return TestClient(create_app(Scripted(replies), db, staff_token=token))
 
 
 def cancel_flow(db):
@@ -65,15 +69,16 @@ def test_approval_flow(db):
     assert c.post("/chat", json={"session_id": sid, "message": "hello?"}).status_code == 409
     assert store.get(db, "orders", ORDER)["status"] == "pending"
 
-    done = c.post(f"/approvals/{approval['id']}", json={"approved": True}).json()
+    done = c.post(f"/approvals/{approval['id']}", json={"approved": True}, headers=STAFF).json()
     assert done["reply"] == "Your order is cancelled." and done["pending_approval"] is None
     assert store.get(db, "orders", ORDER)["status"] == "cancelled"
-    assert c.post(f"/approvals/{approval['id']}", json={"approved": True}).status_code == 404  # used up
+    assert c.post(f"/approvals/{approval['id']}", json={"approved": True}, headers=STAFF).status_code == 404  # used up
 
 
 def test_rejection(db):
     c, _, third = cancel_flow(db)
-    done = c.post(f"/approvals/{third['pending_approval']['id']}", json={"approved": False, "note": "check ID"})
+    done = c.post(f"/approvals/{third['pending_approval']['id']}", json={"approved": False, "note": "check ID"},
+                  headers=STAFF)
     tool_msgs = [m["content"] for m in done.json()["messages"] if m["role"] == "tool"]
     assert "Staff rejected this refund" in tool_msgs[-1] and "check ID" in tool_msgs[-1]
     assert store.get(db, "orders", ORDER)["status"] == "pending"
@@ -85,7 +90,7 @@ def test_session_view_and_errors(db):
     view = c.get(f"/sessions/{sid}").json()
     assert sid == "abc-1" and view["user_id"] is None and len(view["messages"]) == 2
     assert c.get("/sessions/nope").status_code == 404
-    assert c.post("/approvals/nope", json={"approved": True}).status_code == 404
+    assert c.post("/approvals/nope", json={"approved": True}, headers=STAFF).status_code == 404
     assert c.post("/chat", json={"message": ""}).status_code == 422
     assert c.post("/chat", json={"session_id": "bad id!", "message": "hi"}).status_code == 422
 
@@ -93,7 +98,7 @@ def test_session_view_and_errors(db):
 def test_llm_unavailable_is_503(db):
     model = Scripted([])
     model._chat = lambda *a: (_ for _ in ()).throw(RuntimeError("quota"))
-    c = TestClient(create_app(model, db))
+    c = TestClient(create_app(model, db, staff_token=TOKEN))
     r = c.post("/chat", json={"message": "hi"})
     assert r.status_code == 503 and "quota" in r.json()["detail"]
 
@@ -102,3 +107,17 @@ def test_cors_allows_vite_dev_server(db):
     r = client(db, []).options("/chat", headers={"Origin": "http://localhost:5173",
                                                  "Access-Control-Request-Method": "POST"})
     assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_approval_needs_staff_token(db):
+    c, _, third = cancel_flow(db)
+    url = f"/approvals/{third['pending_approval']['id']}"
+    assert c.post(url, json={"approved": True}).status_code == 403                                   # customer
+    assert c.post(url, json={"approved": True}, headers={"X-Staff-Token": "guess"}).status_code == 403
+    assert store.get(db, "orders", ORDER)["status"] == "pending"
+    assert c.post(url, json={"approved": True}, headers=STAFF).status_code == 200
+
+
+def test_approvals_disabled_without_token(db):
+    c = client(db, [], token="")
+    assert c.post("/approvals/x", json={"approved": True}, headers={"X-Staff-Token": ""}).status_code == 503

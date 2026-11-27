@@ -4,14 +4,15 @@
 
 POST /chat               {"session_id"?, "message"} -> agent reply, this turn's tool calls, pending approval
 GET  /sessions/{id}      full conversation, logged-in user, pending approval
-POST /approvals/{id}     {"approved", "note"?} -> staff decision on a large refund; the agent continues
+POST /approvals/{id}     {"approved", "note"?} + X-Staff-Token header -> staff decision; the agent continues
 GET  /health
 """
+import secrets
 import sqlite3
 import threading
 import uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.types import Command
 from pydantic import BaseModel, Field
@@ -39,8 +40,10 @@ def public(messages: list[dict]) -> list[dict]:
     return [{k: v for k, v in m.items() if k != "provider_data"} for m in messages]
 
 
-def create_app(provider: Provider | None = None, conn: sqlite3.Connection | None = None) -> FastAPI:
-    """Build the app. Tests pass a fake provider and a temporary DB."""
+def create_app(provider: Provider | None = None, conn: sqlite3.Connection | None = None,
+               staff_token: str | None = None) -> FastAPI:
+    """Build the app. Tests pass a fake provider, a temporary DB and a staff token."""
+    staff_token = settings.staff_token if staff_token is None else staff_token
     if conn is None:
         if not store.DB_PATH.exists():
             store.reset(store.DB_PATH)
@@ -99,7 +102,12 @@ def create_app(provider: Provider | None = None, conn: sqlite3.Connection | None
                 "messages": public(state.values.get("messages", [])), "pending_approval": pending(session_id)}
 
     @app.post("/approvals/{approval_id}")
-    def decide(approval_id: str, body: ApprovalIn) -> dict:
+    def decide(approval_id: str, body: ApprovalIn, x_staff_token: str = Header(default="")) -> dict:
+        # Customers use the same API, so only staff holding the token may decide refunds.
+        if not staff_token:
+            raise HTTPException(503, "Approvals are disabled: set STAFF_TOKEN")
+        if not secrets.compare_digest(x_staff_token, staff_token):
+            raise HTTPException(403, "Staff token required")
         with lock:
             session_id = approvals.get(approval_id)
             current = pending(session_id) if session_id else None
