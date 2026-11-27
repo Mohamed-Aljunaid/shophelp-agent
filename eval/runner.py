@@ -5,6 +5,7 @@ the final shop DB is compared with the DB after replaying the task's gold action
   uv run python -m eval.runner --task 66            # one task, prints the transcript
   uv run python -m eval.runner --task 66 --task 69  # several
   uv run python -m eval.runner --trials 2 -v        # override EVAL_TRIALS, print conversations
+  uv run python -m eval.runner --name baseline      # save to eval/reports/baseline/ (rerun to resume)
 
 Scoring: reward = 1 if the final DB matches the gold DB exactly, else 0.
 tau3's official reward also needs an LLM judge for NL assertions; we skip that
@@ -22,6 +23,7 @@ from pathlib import Path
 from langgraph.errors import GraphRecursionError
 
 from agent.graph import build_graph
+from eval import report
 from eval.metrics import summary
 from config import Settings, settings
 from llm import LLMError, Provider, get_provider
@@ -137,6 +139,8 @@ def run_task(task: dict, provider: Provider, clean_db: Path, max_user_turns: int
                     end = "transferred"
                     break
             messages = graph.get_state(config).values.get("messages", [])
+            if end in ("stop", "transfer", "out-of-scope"):
+                messages = messages + [{"role": "user", "content": said}]  # final message never reached the agent
             final_db = store.export(conn)
         finally:
             conn.close()
@@ -178,15 +182,34 @@ def print_transcript(result: dict) -> None:
                 print(f"agent> {m['content']}")
 
 
-def run_eval(tasks: list[dict], trials: int, provider: Provider, verbose: bool = False) -> list[dict]:
-    """Run every task `trials` times (trial by trial, so partial runs stay balanced)."""
-    clean, results = clean_db_path(), []
+def run_eval(tasks: list[dict], trials: int, provider: Provider, verbose: bool = False,
+             out_dir: Path | None = None, max_consecutive_errors: int = 3) -> list[dict]:
+    """Run every task `trials` times (trial by trial, so partial runs stay balanced).
+    With out_dir, each run is saved as it finishes and runs already saved are skipped (resume).
+    Runs that end in an LLM error are not saved (so a rerun retries them); after
+    `max_consecutive_errors` in a row we stop, as the quota is probably used up."""
+    clean = clean_db_path()
+    results = report.load_results(out_dir) if out_dir else []
+    done = {(r["task_id"], r["trial"]) for r in results}
+    errors = 0
     for trial in range(1, trials + 1):
         provider.cache_salt = f"trial{trial}"  # each trial gets fresh LLM replies (cached per trial)
         for task in tasks:
+            if (task["id"], trial) in done:
+                continue
             result = run_task(task, provider, clean)
             result["trial"] = trial
+            if result["end"].startswith(("user_error", "agent_error")):
+                errors += 1
+                print(f"task {task['id']:>3} trial {trial}: {result['end'][:200]} (not saved)", flush=True)
+                if errors >= max_consecutive_errors:
+                    print(f"Stopping after {errors} LLM errors in a row; rerun the same command to resume.")
+                    return results
+                continue
+            errors = 0
             results.append(result)
+            if out_dir:
+                report.append_result(out_dir, result)
             if verbose:
                 print(f"\n=== task {task['id']} trial {trial} ===")
                 print_transcript(result)
@@ -200,11 +223,15 @@ def main() -> None:
     parser.add_argument("--task", action="append", help="task id (repeatable); default: the configured subset")
     parser.add_argument("--trials", type=int, default=settings.eval_trials, help="runs per task (EVAL_TRIALS)")
     parser.add_argument("-v", "--verbose", action="store_true", help="print each conversation")
+    parser.add_argument("--name", help="save to eval/reports/<name>/ (rerun the same name to resume)")
     args = parser.parse_args()
     tasks = load_tasks(args.task) if args.task else select_tasks()
-    results = run_eval(tasks, args.trials, get_provider(), args.verbose)
-    s = summary(results)
-    print(f"\n{s['tasks']} tasks x {s['trials']} trials")
+    out_dir = report.REPORTS / args.name if args.name else None
+    results = run_eval(tasks, args.trials, get_provider(), args.verbose, out_dir)
+    if not results:
+        return
+    s = report.write_report(out_dir, results, {t["id"]: t for t in tasks}) if out_dir else summary(results)
+    print(f"\n{s['tasks']} tasks x {s['trials']} trials" + (f"  (saved to {out_dir})" if out_dir else ""))
     for k, v in s["pass_hat_k"].items():
         print(f"  pass^{k}: {v:.3f}")
     print(f"  avg customer turns: {s['avg_user_turns']:.1f}   avg tool calls: {s['avg_tool_calls']:.1f}")

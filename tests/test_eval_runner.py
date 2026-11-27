@@ -95,3 +95,51 @@ def test_run_eval_trials_use_separate_cache_salt(clean, monkeypatch):
     results = runner.run_eval(runner.load_tasks(["88", "66"]), 2, Scripted([]))
     assert salts == ["trial1", "trial1", "trial2", "trial2"]
     assert [r["trial"] for r in results] == [1, 1, 2, 2]
+
+
+def fake_run(outcomes):
+    """run_task stand-in: pops (reward, end) per call."""
+    def run(task, provider, clean):
+        reward, end = outcomes.pop(0)
+        return {"task_id": task["id"], "reward": reward, "db_match": reward == 1.0, "communicate": {},
+                "end": end, "user_turns": 2, "tool_calls": 1,
+                "messages": [{"role": "user", "content": "cancel please"},
+                             {"role": "assistant", "content": None, "tool_calls": [
+                                 {"id": "x", "name": "cancel_pending_order",
+                                  "args": {"order_id": "#W8835847", "reason": "no longer needed"}}]},
+                             {"role": "tool", "tool_call_id": "x", "name": "cancel_pending_order", "content": "{}"},
+                             {"role": "assistant", "content": "Done."}]}
+    return run
+
+
+def test_saves_resumes_and_writes_failures(clean, monkeypatch, tmp_path):
+    from eval import report
+    monkeypatch.setattr(runner, "clean_db_path", lambda: clean)
+    tasks = runner.load_tasks(["88", "66"])
+    out = tmp_path / "rep"
+    monkeypatch.setattr(runner, "run_task", fake_run([(1.0, "stop"), (0.0, "stop")]))
+    runner.run_eval(tasks, 1, Scripted([]), out_dir=out)
+    monkeypatch.setattr(runner, "run_task", fake_run([(1.0, "stop"), (1.0, "stop")]))  # trial 2 only
+    results = runner.run_eval(tasks, 2, Scripted([]), out_dir=out)
+    assert [(r["task_id"], r["trial"]) for r in results] == [("88", 1), ("66", 1), ("88", 2), ("66", 2)]
+
+    s = report.write_report(out, results, {t["id"]: t for t in tasks})
+    assert s["pass_hat_k"] == {1: 0.75, 2: 0.5}
+    files = sorted(p.name for p in (out / "failures").iterdir())
+    assert files == ["task066_trial1.md"]
+    md = (out / "failures" / files[0]).read_text(encoding="utf-8")
+    assert "**Expected writes:**" in md and 'cancel_pending_order({"order_id": "#W3361211"' in md
+    assert '**Agent writes:**\n- `cancel_pending_order({"order_id": "#W8835847"' in md
+
+
+def test_llm_errors_not_saved_and_stop_run(clean, monkeypatch, tmp_path):
+    monkeypatch.setattr(runner, "clean_db_path", lambda: clean)
+    monkeypatch.setattr(runner, "run_task", fake_run([(0.0, "user_error: 429")] * 3 + [(1.0, "stop")]))
+    results = runner.run_eval(runner.load_tasks(["88", "66"]), 2, Scripted([]), out_dir=tmp_path / "r")
+    assert results == [] and not (tmp_path / "r" / "results.jsonl").exists()
+
+
+def test_final_customer_message_kept(clean):
+    model = Scripted([say("hi"), say("Hello, how can I help?"), say("Never mind. ###STOP###")])
+    result = runner.run_task(runner.load_tasks(["88"])[0], model, clean)
+    assert result["messages"][-1] == {"role": "user", "content": "Never mind. ###STOP###"}
