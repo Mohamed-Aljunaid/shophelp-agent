@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { getSession, sendChat, type Approval, type Message } from './api'
+import ToolPanel from './ToolPanel.tsx'
 
 const SESSION_KEY = 'shophelp-session'
 const POLL_MS = 3000
@@ -83,57 +84,60 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header>
-        <h1>ShopHelp</h1>
-        <button type="button" className="secondary" onClick={newConversation} disabled={busy}>
-          New conversation
-        </button>
-      </header>
+    <div className="layout">
+      <div className="app">
+        <header>
+          <h1>ShopHelp</h1>
+          <button type="button" className="secondary" onClick={newConversation} disabled={busy}>
+            New conversation
+          </button>
+        </header>
 
-      <main className="chat" aria-live="polite">
-        {messages.length === 0 && (
-          <p className="hint">Hi! I can help with your orders: cancel, return, exchange, or change an address.</p>
+        <main className="chat" aria-live="polite">
+          {messages.length === 0 && (
+            <p className="hint">Hi! I can help with your orders: cancel, return, exchange, or change an address.</p>
+          )}
+          {chatLines(messages).map((line) => (
+            <div key={line.key} className={`bubble ${line.who}`}>
+              <span className="who">{line.who === 'you' ? 'You' : 'Agent'}</span>
+              <p>{line.text}</p>
+            </div>
+          ))}
+          {busy && <p className="hint">Agent is typing…</p>}
+          <div ref={endRef} />
+        </main>
+
+        {approval && (
+          <p className="notice" role="status">
+            A refund of ${approval.amount.toFixed(2)} is waiting for staff approval. The agent will continue once
+            it is decided.
+          </p>
         )}
-        {chatLines(messages).map((line) => (
-          <div key={line.key} className={`bubble ${line.who}`}>
-            <span className="who">{line.who === 'you' ? 'You' : 'Agent'}</span>
-            <p>{line.text}</p>
-          </div>
-        ))}
-        {busy && <p className="hint">Agent is typing…</p>}
-        <div ref={endRef} />
-      </main>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
 
-      {approval && (
-        <p className="notice" role="status">
-          A refund of ${approval.amount.toFixed(2)} is waiting for staff approval. The agent will continue once
-          it is decided.
-        </p>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      <form onSubmit={send}>
-        <label htmlFor="message" className="visually-hidden">
-          Your message
-        </label>
-        <input
-          id="message"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={approval ? 'Waiting for staff approval…' : 'Type your message'}
-          disabled={busy || approval !== null}
-          maxLength={4000}
-          autoComplete="off"
-        />
-        <button type="submit" disabled={busy || approval !== null || !draft.trim()}>
-          Send
-        </button>
-      </form>
+        <form onSubmit={send}>
+          <label htmlFor="message" className="visually-hidden">
+            Your message
+          </label>
+          <input
+            id="message"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={approval ? 'Waiting for staff approval…' : 'Type your message'}
+            disabled={busy || approval !== null}
+            maxLength={4000}
+            autoComplete="off"
+          />
+          <button type="submit" disabled={busy || approval !== null || !draft.trim()}>
+            Send
+          </button>
+        </form>
+      </div>
+      <ToolPanel messages={messages} />
     </div>
   )
 }
