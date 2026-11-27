@@ -7,6 +7,8 @@ Type 'quit' (or Ctrl+C) to stop. Tool calls are shown as [tool] lines.
 import argparse
 import uuid
 
+from langgraph.types import Command
+
 from agent.graph import build_graph
 from llm import LLMError, get_provider
 from shop_db import store
@@ -23,6 +25,15 @@ def show(messages: list[dict], width: int = 300) -> None:
         elif m["role"] == "tool":
             text = m["content"]
             print(f"  [result] {text[:width]}{'...' if len(text) > width else ''}")
+
+
+def ask_staff(request: dict) -> dict:
+    """Play the staff member: approve or reject a refund in the terminal."""
+    print(f"  [approval needed] refund ${request['amount']:.2f} (over ${request['threshold']:.2f}) "
+          f"for {request['tool']}({request['args']}), user {request['user_id']}")
+    approved = input("staff> approve? [y/N] ").strip().lower() in {"y", "yes"}
+    note = "" if approved else input("staff> note for the agent (optional): ").strip()
+    return {"approved": approved, "note": note}
 
 
 def main() -> None:
@@ -48,6 +59,8 @@ def main() -> None:
                 continue
             try:
                 graph.invoke({"messages": [{"role": "user", "content": text}]}, config)
+                while pending := graph.get_state(config).interrupts:  # staff approval for a large refund
+                    graph.invoke(Command(resume=ask_staff(pending[0].value)), config)
             except Exception as exc:  # e.g. rate limit after all retries: report and keep chatting
                 print(f"  [error] {type(exc).__name__}: {exc}")
             messages = graph.get_state(config).values["messages"]

@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 
 from langgraph.errors import GraphRecursionError
+from langgraph.types import Command
 
 from agent.graph import build_graph
 from eval import report
@@ -115,7 +116,7 @@ def run_task(task: dict, provider: Provider, clean_db: Path, max_user_turns: int
             config = {"configurable": {"thread_id": uuid.uuid4().hex}}
             user_system = user_system_prompt(task)
             user_view = [{"role": "user", "content": GREETING}]  # roles flipped for the simulator
-            end, turns = "max_turns", 0
+            end, turns, approvals = "max_turns", 0, 0
             while turns < max_user_turns:
                 try:
                     said = provider.chat(user_system, user_view).text or ""
@@ -129,6 +130,9 @@ def run_task(task: dict, provider: Provider, clean_db: Path, max_user_turns: int
                     break
                 try:
                     state = graph.invoke({"messages": [{"role": "user", "content": said}]}, config)
+                    while "__interrupt__" in state:  # no staff in tau3 tasks: auto-approve, but count it
+                        approvals += 1
+                        state = graph.invoke(Command(resume={"approved": True, "note": "auto-approved (eval)"}), config)
                 except (LLMError, GraphRecursionError) as exc:
                     end = f"agent_error: {type(exc).__name__}: {exc}"
                     break
@@ -157,6 +161,7 @@ def run_task(task: dict, provider: Provider, clean_db: Path, max_user_turns: int
         "communicate": communicate,
         "end": end,
         "user_turns": turns,
+        "approvals": approvals,
         "tool_calls": sum(len(m.get("tool_calls") or []) for m in messages if m["role"] == "assistant"),
         "messages": [{k: v for k, v in m.items() if k != "provider_data"} for m in messages],
     }

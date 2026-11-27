@@ -64,7 +64,7 @@ def test_login_then_cancel_across_turns(conn):
         call("cancel_pending_order", order_id=ORDER, reason="no longer needed"),
         LLMResponse(text="Your order is cancelled."),
     ])
-    graph = build_graph(model, conn, "sys")
+    graph = build_graph(model, conn, "sys", approval_threshold=10_000)  # approvals tested separately
     first = ask(graph, f"I'm {email}")
     assert first["messages"][-1]["content"] == "You're verified. What can I do?"
     assert first["user_id"] == "ethan_lopez_6291"
@@ -168,3 +168,61 @@ def test_failed_login_keeps_tools_restricted(conn):
     model = Scripted([call("find_user_id_by_email", email="nobody@example.com"), LLMResponse(text="Not found.")])
     ask(build_graph(model, conn, "sys"), "hi")
     assert len(model.tools_seen[1]) == 4
+
+
+def confirmed_cancel(conn, threshold):
+    """Log in, summarise, customer says yes, agent cancels ORDER ($4079.45, gift card)."""
+    email = store.get(conn, "users", "ethan_lopez_6291")["email"]
+    model = Scripted([
+        call("find_user_id_by_email", email=email), LLMResponse(text="Verified."),
+        LLMResponse(text=f"Cancel order {ORDER}, reason 'no longer needed'? (yes/no)"),
+        call("cancel_pending_order", order_id=ORDER, reason="no longer needed"),
+        LLMResponse(text="Done."),
+    ])
+    graph = build_graph(model, conn, "sys", approval_threshold=threshold)
+    ask(graph, email)
+    ask(graph, "cancel my order")
+    return graph, ask(graph, "yes")
+
+
+def test_large_refund_pauses_for_staff_then_runs_once_approved(conn):
+    from langgraph.types import Command
+    graph, out = confirmed_cancel(conn, threshold=200)
+    request = out["__interrupt__"][0].value
+    assert request == {"type": "refund_approval", "user_id": "ethan_lopez_6291", "tool": "cancel_pending_order",
+                       "args": {"order_id": ORDER, "reason": "no longer needed"}, "amount": 4079.45, "threshold": 200}
+    assert store.get(conn, "orders", ORDER)["status"] == "pending"  # nothing happens while waiting
+
+    done = graph.invoke(Command(resume={"approved": True}), {"configurable": {"thread_id": "t1"}})
+    assert done["messages"][-1]["content"] == "Done."
+    order = store.get(conn, "orders", ORDER)
+    assert order["status"] == "cancelled" and len(order["payment_history"]) == 2  # refunded exactly once
+
+
+@pytest.mark.parametrize("decision", [{"approved": False, "note": "fraud check"}, "yes", {"approved": "true"}])
+def test_rejected_or_malformed_decision_blocks_refund(conn, decision):
+    from langgraph.types import Command
+    graph, _ = confirmed_cancel(conn, threshold=200)
+    done = graph.invoke(Command(resume=decision), {"configurable": {"thread_id": "t1"}})
+    tool_msg = [m["content"] for m in done["messages"] if m["role"] == "tool"][-1]
+    assert tool_msg.startswith("Error: Staff rejected this refund")
+    assert store.get(conn, "orders", ORDER)["status"] == "pending"
+    if isinstance(decision, dict) and decision.get("note"):
+        assert "fraud check" in tool_msg
+
+
+def test_small_refund_needs_no_approval(conn):
+    _, out = confirmed_cancel(conn, threshold=5000)
+    assert "__interrupt__" not in out and store.get(conn, "orders", ORDER)["status"] == "cancelled"
+
+
+def test_refund_amounts(conn):
+    from agent.approval import refund_amount
+    assert refund_amount(conn, "cancel_pending_order", {"order_id": ORDER}) == 4079.45
+    # #W3113816 items: 2206116040 = 209.91, 4843487907 = 254.84
+    assert refund_amount(conn, "return_delivered_order_items",
+                         {"order_id": "#W3113816", "item_ids": ["2206116040", "4843487907"]}) == 464.75
+    assert refund_amount(conn, "return_delivered_order_items",
+                         {"order_id": "#W3113816", "item_ids": ["2206116040", "2206116040"]}) == 209.91  # one in order
+    assert refund_amount(conn, "modify_pending_order_address", {"order_id": ORDER}) == 0.0
+    assert refund_amount(conn, "cancel_pending_order", {"order_id": "#nope"}) == 0.0

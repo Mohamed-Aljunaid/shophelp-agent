@@ -10,9 +10,12 @@ from typing import Annotated, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
+from agent.approval import refund_amount
 from agent.confirm import confirmation_problem
 from agent.prompt import system_prompt
+from config import settings
 from llm import Provider
 from tools.policy import AUTH_TOOLS, OPEN_TOOLS, WRITE_TOOLS, ShopSession
 from tools.schemas import TOOL_SPECS
@@ -25,8 +28,14 @@ class State(TypedDict):
     user_id: str | None
 
 
-def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None = None, checkpointer=None):
-    """Compile the agent graph. Invoke with {"messages": [user msg]} and a thread_id."""
+def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None = None, checkpointer=None,
+                approval_threshold: float | None = None):
+    """Compile the agent graph. Invoke with {"messages": [user msg]} and a thread_id.
+
+    Refunds above approval_threshold (REFUND_APPROVAL_THRESHOLD) pause the graph with an
+    interrupt; resume with Command(resume={"approved": bool, "note": str})."""
+    if approval_threshold is None:
+        approval_threshold = settings.refund_approval_threshold
     system = system or system_prompt()
 
     def model(state: State) -> dict:
@@ -35,15 +44,39 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
         reply = provider.chat(system, state["messages"], tools)
         return {"messages": [reply.to_message()]}
 
+    def needs_approval(history, user_id, call) -> float:
+        """The refund amount if this confirmed write must wait for staff approval, else 0."""
+        if not user_id or call["name"] not in WRITE_TOOLS or confirmation_problem(history, call["name"], call["args"]):
+            return 0.0
+        amount = refund_amount(conn, call["name"], call["args"])
+        return amount if amount > approval_threshold else 0.0
+
     def tools(state: State) -> dict:
+        calls, history = state["messages"][-1]["tool_calls"], state["messages"][:-1]
+        # Ask staff BEFORE running anything: on resume LangGraph re-runs this node from the top.
+        decisions = {}
+        for call in calls:
+            if amount := needs_approval(history, state.get("user_id"), call):
+                decisions[call["id"]] = interrupt({
+                    "type": "refund_approval", "user_id": state.get("user_id"), "tool": call["name"],
+                    "args": call["args"], "amount": amount, "threshold": approval_threshold})
         session = ShopSession(conn)
         session.user_id = state.get("user_id")
         results = []
-        for call in state["messages"][-1]["tool_calls"]:
+        for call in calls:
             try:
                 if session.user_id and call["name"] in WRITE_TOOLS and (problem := confirmation_problem(
-                        state["messages"][:-1], call["name"], call["args"])):
+                        history, call["name"], call["args"])):
                     raise ValueError(problem)
+                if needs_approval(history, session.user_id, call):
+                    decision = decisions.get(call["id"])
+                    if decision is None:  # user logged in within this same batch; approval comes next time
+                        raise ValueError("This refund needs staff approval. Call the tool again on its own.")
+                    if not (isinstance(decision, dict) and decision.get("approved") is True):  # anything else = reject
+                        note = decision.get("note") if isinstance(decision, dict) else None
+                        note = f" Staff note: {note}" if note else ""
+                        raise ValueError(f"Staff rejected this refund; nothing was changed.{note} "
+                                         "Tell the customer, or offer a transfer to a human agent.")
                 out = session.call(call["name"], **call["args"])
                 content = out if isinstance(out, str) else json.dumps(out)
             except ValueError as exc:

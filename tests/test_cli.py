@@ -39,3 +39,11 @@ def test_cli_conversation(tmp_path, monkeypatch, capsys):
     assert "[error] LLMError: scripted call failed: RuntimeError: quota" in out
     assert "agent> Still here." in out
     assert db.exists()
+
+
+def test_ask_staff(monkeypatch, capsys):
+    answers = iter(["n", "too large"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    req = {"amount": 500.0, "threshold": 200.0, "tool": "cancel_pending_order", "args": {}, "user_id": "u"}
+    assert cli.ask_staff(req) == {"approved": False, "note": "too large"}
+    assert "[approval needed] refund $500.00" in capsys.readouterr().out

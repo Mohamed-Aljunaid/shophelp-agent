@@ -43,6 +43,7 @@ def test_successful_task_scores_1(clean):
     result = runner.run_task(runner.load_tasks(["88"])[0], model, clean)
     assert result["reward"] == 1.0 and result["end"] == "stop"
     assert result["user_turns"] == 3 and result["tool_calls"] == 2
+    assert result["approvals"] == 1  # $689.97 refund > default threshold, auto-approved in eval
     assert model.seen[0] == [{"role": "user", "content": runner.GREETING}]  # simulator sees greeting as 'user'
     assert store.get(store.connect(clean), "orders", "#W8835847")["status"] == "pending"  # clean DB untouched
 
