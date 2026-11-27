@@ -13,8 +13,10 @@ from langgraph.graph import END, START, StateGraph
 
 from agent.prompt import system_prompt
 from llm import Provider
-from tools.policy import ShopSession
+from tools.policy import AUTH_TOOLS, OPEN_TOOLS, ShopSession
 from tools.schemas import TOOL_SPECS
+
+PRE_AUTH_SPECS = [s for s in TOOL_SPECS if s["name"] in AUTH_TOOLS | OPEN_TOOLS]
 
 
 class State(TypedDict):
@@ -27,7 +29,9 @@ def build_graph(provider: Provider, conn: sqlite3.Connection, system: str | None
     system = system or system_prompt()
 
     def model(state: State) -> dict:
-        reply = provider.chat(system, state["messages"], TOOL_SPECS)
+        # Authentication step: until a user is verified, the model is only offered login tools.
+        tools = TOOL_SPECS if state.get("user_id") else PRE_AUTH_SPECS
+        reply = provider.chat(system, state["messages"], tools)
         return {"messages": [reply.to_message()]}
 
     def tools(state: State) -> dict:

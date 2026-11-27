@@ -19,10 +19,11 @@ class Scripted(Provider):
 
     def __init__(self, replies):
         super().__init__("m", max_rpm=0)
-        self.replies, self.seen = list(replies), []
+        self.replies, self.seen, self.tools_seen = list(replies), [], []
 
     def _chat(self, system, messages, tools):
         self.seen.append(list(messages))
+        self.tools_seen.append(sorted(t["name"] for t in tools))
         return self.replies.pop(0)
 
 
@@ -113,3 +114,22 @@ def test_system_prompt_has_rules_and_policy(conn):
     model._chat = lambda system, messages, tools: sent.update(system=system) or LLMResponse(text="hi")
     ask(build_graph(model, conn), "hello")
     assert sent["system"] == prompt  # default prompt is used by the graph
+
+
+def test_only_login_tools_offered_until_verified(conn):
+    email = store.get(conn, "users", "ethan_lopez_6291")["email"]
+    model = Scripted([
+        call("find_user_id_by_email", email=email),
+        LLMResponse(text="Verified."),
+    ])
+    out = ask(build_graph(model, conn, "sys"), f"cancel my order, I'm {email}")
+    assert model.tools_seen[0] == ["calculate", "find_user_id_by_email", "find_user_id_by_name_zip",
+                                   "transfer_to_human_agents"]
+    assert len(model.tools_seen[1]) == 16  # all tools once the user is verified
+    assert out["user_id"] == "ethan_lopez_6291"
+
+
+def test_failed_login_keeps_tools_restricted(conn):
+    model = Scripted([call("find_user_id_by_email", email="nobody@example.com"), LLMResponse(text="Not found.")])
+    ask(build_graph(model, conn, "sys"), "hi")
+    assert len(model.tools_seen[1]) == 4
